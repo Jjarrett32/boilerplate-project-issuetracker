@@ -9,15 +9,15 @@ module.exports = function (app) {
     .route("/api/issues/:project")
 
     .get(function (req, res) {
-      let project = req.params.project;
+      let projectName = req.params.project;
       //?open=true&assigned_to=Joe
       const {
-        id,
+        _id,
         open,
         issue_title,
         issue_text,
         created_by,
-        asssigned_to,
+        assigned_to,
         status_text,
       } = req.query;
 
@@ -36,7 +36,23 @@ module.exports = function (app) {
         issue_text != undefined
           ? { $match: { "issues.issue_text ": issue_text } }
           : { $match: {} },
-      ]);
+        created_by != undefined
+          ? { $match: { "issue.created_by": created_by } }
+          : { $match: {} },
+        assigned_to != undefined
+        ? { $match: { "issues.assigned_to": assigned_to } }
+        : { $match: {} },
+        status_text != undefined
+        ? {$match: { "issues.status_text": status_text } }
+        : {$match: {} },
+      ]).excel((err, data) => {
+        if (!data) {
+          res.json([]);
+        }else{
+          let mappedData = data.map((item) => item.issues);
+          res.json(mappedData);
+        }
+      });
     })
 
     .post(function (req, res) {
@@ -57,7 +73,7 @@ module.exports = function (app) {
         open: true,
         status_text: status_text || "",
       });
-      console.log(newIssue);
+    
       ProjectModel.findOne({ name: project }, (err, projectdata) => {
         if (!projectdata) {
           const newProject = new ProjectModel({ name: project });
@@ -85,9 +101,68 @@ module.exports = function (app) {
 
     .put(function (req, res) {
       let project = req.params.project;
+      const {
+        _id,
+        issue_title,
+        issue_text,
+        created_by,
+        assigned_to,
+        status_text,
+        open,
+      } = req.body;
+      if (!_id) {
+        res.json({ error: "missing_id" });
+        return;
+      }
+        if (
+          !issue_title &&
+          !issue_text &&
+          !created_by &&
+          !assigned_to &&
+          !status_text &&
+          !open
+        ) {
+          res.json({ error: "no update field(s) sent", _id: _id });
+          return;
+        }
+        ProjectModel.findOne({ name: project }, (err, projectdata) => {
+          if (err || !projectdata) {
+            res.json({ error: "could not update", _id: _id });
+          } else {
+            const issueData = projectdata.issues.id(_id);
+            if (!issueData) {
+              res.json({ error: "could not update", _id: _id });
+              return;
+            }
+            issueData.issue_title = issue_title || issueData.issue_title;
+            issueData.issue_text = issue_text || issueData.issue_text;
+            issueData.created_by = created_by || issueData.created_by;
+            issueData.assigned_to = assigned_to || issueData.assigned_to;
+            issueData.status_text = status_text || issueData.status_text;
+            issueData.updated_on = new Date();
+            issueData.open = open;
+            projectdata.save((err, data) => {
+              if (err || !data) {
+                res.json({ error: "could not update", _id: _id});
+              }else{
+                res.json({ result: "sucessfully updated", _id: _id });
+              }
+            });
+          }
+        });
     })
 
     .delete(function (req, res) {
       let project = req.params.project;
+      const { _id } = req.body;
+      if (!_id) {
+        res.json({ error: "missing_id" });
+        return;
+      }
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if (!projectdata || err) {
+          res.send({ error: "could not delete", _id: _id });
+        }else{}
+      })
     });
 };
